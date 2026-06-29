@@ -1,6 +1,8 @@
 # fritte
 
-Scrapt Daten einer FRITZ!Box ueber die internen `/api/v0/*`-Endpunkte und stellt sie als kleines Dashboard (HTML) sowie als JSON-API bereit.
+Scrapt Daten einer FRITZ!Box ueber die internen `/api/v0/*`-Endpunkte und stellt sie als kleines Dashboard (HTML), JSON-API sowie Prometheus- und Syslog-Integration bereit.
+
+**Getestet mit:** FRITZ!OS 8.25 auf einer FRITZ!Box 6660 Cable. Andere FRITZ!OS-Versionen oder Modelle koennen abweichende Endpunkte oder Antwortformate haben.
 
 ## Endpunkte
 
