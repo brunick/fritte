@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" alt="fritte Logo" width="360"></p>
+
 # fritte
 
 Scrapt Daten einer FRITZ!Box ueber die internen `/api/v0/*`-Endpunkte und stellt sie als kleines Dashboard (HTML), JSON-API sowie Prometheus- und Syslog-Integration bereit.
