@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fritte – FRITZ!Box Dashboard</title>
+<style>
+  :root {
+    --bg:#0f1115; --card:#171a21; --border:#23262d;
+    --txt:#e6e6e6; --muted:#8a93a3;
+    --ok:#3fb950; --err:#f85149; --accent:#58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); }
+  header h1 { margin:0; font-size:1.1rem; }
+  header span { color:var(--muted); font-size:.8rem; }
+  main {
+    padding:1.5rem; display:grid; gap:1rem;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  }
+  .card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .card.ok  { border-top:3px solid var(--ok); }
+  .card.err { border-top:3px solid var(--err); }
+  .card header {
+    padding:.7rem 1rem; border-bottom:1px solid var(--border);
+    background:#1b1f27;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .card header h2 {
+    margin:0; font-size:.9rem; font-weight:600; text-transform:uppercase; letter-spacing:.02em;
+  }
+  .badge { font-size:.65rem; padding:.15rem .5rem; border-radius:999px; font-weight:700; }
+  .ok .badge  { background:rgba(63,185,80,.2); color:var(--ok); }
+  .err .badge { background:rgba(248,81,73,.2); color:var(--err); }
+  .meta { color:var(--muted); font-size:.65rem; padding:.25rem 1rem; }
+  .body { padding:0 1rem 1rem; }
+  pre {
+    margin:0; max-height:320px; overflow:auto;
+    font-size:.72rem; line-height:1.45;
+    white-space:pre-wrap; word-break:break-word;
+    background:#12151b; border-radius:6px; padding:.75rem;
+  }
+  .errtxt { color:var(--err); }
+  .halt {
+    margin:1rem 1.5rem; padding:1rem;
+    background:rgba(248,81,73,.12); border:1px solid var(--err);
+    border-radius:10px; color:var(--err);
+  }
+  .halt small { color:var(--muted); font-size:.8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>fritte <span>· FRITZ!Box Dashboard · generiert {{.Generated}} · auto-refresh 5s</span></h1>
+</header>
+{{if .Halted}}
+<div class="halt">
+  <strong>Scraper gestoppt – Login-Fehler.</strong><br>
+  {{.HaltReason}}<br>
+  <small>Keine weiteren Requests. Prozessneustart nötig.</small>
+</div>
+{{end}}
+<main>
+{{range .Cards}}
+  <section class="card {{if .OK}}ok{{else}}err{{end}}">
+    <header>
+      <h2>{{.Name}}</h2>
+      {{if .OK}}<span class="badge">OK</span>{{else}}<span class="badge">FEHLER</span>{{end}}
+    </header>
+    <div class="meta">update: {{.Time}}</div>
+    <div class="body">
+      {{if .OK}}<pre>{{.JSON}}</pre>{{else}}<pre class="errtxt">{{.Error}}</pre>{{end}}
+    </div>
+  </section>
+{{end}}
+</main>
+</body>
+</html>

@@ -1,0 +1,33 @@
+.env
+*.env
+!.env.example
+
+# FRITZ!Box HAR-Captures und entpackte Daten
+js/*.har
+js/extracted/
+js/extracted_*/
+
+# Go-Build-Artefakte
+/fritte
+*.exe
+/bin/
+/dist/
+/vendor/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporaere Artefakte aus der Entwicklung
+/request
+/internals
