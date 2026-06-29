@@ -48,11 +48,14 @@ type sessionInfo struct {
 	Rights    string   `xml:"Rights"`
 }
 
-// SID liefert eine gueltige SID und loggt sich bei Bedarf (erneut) ein.
+// SID liefert eine gueltige SID. Bereits bekannte SIDs werden wiederverwendet,
+// solange kein Re-Login erzwungen wurde (siehe Invalidate). Dadurch wird nur
+// beim Programmstart und nach Ablauf/Verwerfung der Session durch die Box neu
+// eingeloggt.
 func (a *Authenticator) SID() (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.sid != "" && a.sid != "0000000000000000" && time.Since(a.validAt) < 15*time.Minute {
+	if a.sid != "" && a.sid != "0000000000000000" {
 		return a.sid, nil
 	}
 	return a.loginLocked()

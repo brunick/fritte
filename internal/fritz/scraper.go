@@ -48,7 +48,7 @@ type Scraper struct {
 
 func NewScraper(client *Client, endpoints []Endpoint, interval time.Duration) *Scraper {
 	if interval <= 0 {
-		interval = 30 * time.Second
+		interval = 5 * time.Second
 	}
 	return &Scraper{
 		client:    client,

@@ -87,7 +87,7 @@ func loadConfig() config {
 		Host:           envOr("FRITZ_HOST", "https://fritz.box"),
 		Username:       os.Getenv("FRITZ_USERNAME"),
 		Password:       os.Getenv("FRITZ_PASSWORD"),
-		PollInterval:   parseDuration(envOr("POLL_INTERVAL", "30s"), 30*time.Second),
+		PollInterval:   parseDuration(envOr("POLL_INTERVAL", "5s"), 5*time.Second),
 		Addr:           envOr("DASHBOARD_ADDR", ":8080"),
 		DatabaseURL:    os.Getenv("DATABASE_URL"),
 		SyslogHost:     os.Getenv("SYSLOG_HOST"),
