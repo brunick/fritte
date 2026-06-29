@@ -1,0 +1,235 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "fritte API",
+    "description": "JSON-API für die von fritte gescrapten FRITZ!Box-Daten.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "fritte"
+    }
+  },
+  "servers": [
+    {
+      "url": "{{.ServerURL}}",
+      "description": "Dynamisch aus dem eingehenden Request ermittelte Basis-URL"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "HTML-Dashboard",
+        "description": "Liefert die HTML-Oberfläche mit allen aktuellen Snapshots.",
+        "operationId": "getDashboard",
+        "responses": {
+          "200": {
+            "description": "HTML-Dashboard",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus-Metriken",
+        "description": "Liefert alle gescrapten FRITZ!Box-Werte im Prometheus-Textformat.",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus-Metriken",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/snapshot": {
+      "get": {
+        "summary": "Alle Snapshots",
+        "description": "Gibt alle aktuellen Snapshots als JSON-Objekt zurück. Der Schlüssel ist der Name des Endpunkts/Moduls.",
+        "operationId": "getAllSnapshots",
+        "responses": {
+          "200": {
+            "description": "Snapshot-Map",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/Snapshot"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/{endpoint}": {
+      "get": {
+        "summary": "Einzelner Snapshot",
+        "description": "Gibt den Snapshot für einen bestimmten Endpunkt oder ein aufgelöstes Multi-Modul zurück.",
+        "operationId": "getSnapshotByEndpoint",
+        "parameters": [
+          {
+            "name": "endpoint",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "multi_box",
+                "multi_system",
+                "multi_telecom",
+                "multi_inet",
+                "multi_misc",
+                "dino_configflags",
+                "dino_eventlog",
+                "dino_internet_ruleset",
+                "dino_net_app",
+                "dino_kids_timer",
+                "dino_wlan_timer",
+                "box",
+                "boxusers",
+                "connections",
+                "cpu",
+                "dect",
+                "eth_ports",
+                "landevice",
+                "nexus",
+                "plc",
+                "power",
+                "providerlist",
+                "uimodlogic",
+                "updatecheck",
+                "vpn",
+                "wlan_light",
+                "webdavclient",
+                "nqos",
+                "mobiled",
+                "sip",
+                "telcfg",
+                "umts",
+                "budget",
+                "ddns",
+                "dnscfg",
+                "dnsserver",
+                "emailnotify",
+                "forwardrules",
+                "igdforwardrules",
+                "inetstat",
+                "ipv6",
+                "ipv6firewall",
+                "jasonii",
+                "myfritzdevice",
+                "remoteman",
+                "userglobal",
+                "webui",
+                "hybridcfg",
+                "aura",
+                "trafficprio",
+                "user",
+                "tam",
+                "pcp",
+                "time",
+                "usb",
+                "filter_profile",
+                "userticket"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Snapshot für den angegebenen Endpunkt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Endpunkt nicht gefunden"
+          }
+        }
+      }
+    },
+    "/swagger.json": {
+      "get": {
+        "summary": "OpenAPI-Spezifikation",
+        "description": "Liefert diese OpenAPI 3.0-Spezifikation als JSON.",
+        "operationId": "getSwaggerSpec",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.0 JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "summary": "Swagger UI",
+        "description": "Interaktive API-Dokumentation im Browser.",
+        "operationId": "getSwaggerUI",
+        "responses": {
+          "200": {
+            "description": "Swagger UI HTML",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Snapshot": {
+        "type": "object",
+        "required": ["time", "ok"],
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Zeitstempel des letzten Scraping-Laufs für diesen Endpunkt (RFC3339)."
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "true, wenn der letzte Lauf erfolgreich war."
+          },
+          "data": {
+            "type": "object",
+            "description": "Rohdaten der FRITZ!Box für diesen Endpunkt. Das Format ist endpunkt- und firmwareabhängig."
+          },
+          "error": {
+            "type": "string",
+            "description": "Fehlermeldung, wenn ok=false."
+          }
+        }
+      }
+    }
+  }
+}
