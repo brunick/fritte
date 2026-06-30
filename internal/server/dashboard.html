@@ -4,83 +4,351 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fritte – FRITZ!Box Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          bg: '#0b0d10',
+          card: '#13161c',
+          border: '#23262d',
+          muted: '#8a93a3',
+          ok: '#3fb950',
+          err: '#f85149',
+          accent: '#58a6ff',
+        }
+      }
+    }
+  }
+</script>
 <style>
-  :root {
-    --bg:#0f1115; --card:#171a21; --border:#23262d;
-    --txt:#e6e6e6; --muted:#8a93a3;
-    --ok:#3fb950; --err:#f85149; --accent:#58a6ff;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin:0; background:var(--bg); color:var(--txt);
-    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  }
-  header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); }
-  header h1 { margin:0; font-size:1.1rem; }
-  header span { color:var(--muted); font-size:.8rem; }
-  main {
-    padding:1.5rem; display:grid; gap:1rem;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  }
-  .card {
-    background:var(--card); border:1px solid var(--border);
-    border-radius:10px; overflow:hidden;
-    display:flex; flex-direction:column;
-  }
-  .card.ok  { border-top:3px solid var(--ok); }
-  .card.err { border-top:3px solid var(--err); }
-  .card header {
-    padding:.7rem 1rem; border-bottom:1px solid var(--border);
-    background:#1b1f27;
-    display:flex; justify-content:space-between; align-items:center;
-  }
-  .card header h2 {
-    margin:0; font-size:.9rem; font-weight:600; text-transform:uppercase; letter-spacing:.02em;
-  }
-  .badge { font-size:.65rem; padding:.15rem .5rem; border-radius:999px; font-weight:700; }
-  .ok .badge  { background:rgba(63,185,80,.2); color:var(--ok); }
-  .err .badge { background:rgba(248,81,73,.2); color:var(--err); }
-  .meta { color:var(--muted); font-size:.65rem; padding:.25rem 1rem; }
-  .body { padding:0 1rem 1rem; }
-  pre {
-    margin:0; max-height:320px; overflow:auto;
-    font-size:.72rem; line-height:1.45;
-    white-space:pre-wrap; word-break:break-word;
-    background:#12151b; border-radius:6px; padding:.75rem;
-  }
-  .errtxt { color:var(--err); }
-  .halt {
-    margin:1rem 1.5rem; padding:1rem;
-    background:rgba(248,81,73,.12); border:1px solid var(--err);
-    border-radius:10px; color:var(--err);
-  }
-  .halt small { color:var(--muted); font-size:.8rem; }
+  body { background: var(--tw-colors-bg, #0b0d10); }
+  .json-tree summary { cursor: pointer; list-style: none; }
+  .json-tree summary::-webkit-details-marker { display: none; }
+  .json-tree summary::before { content: '▶'; display: inline-block; margin-right: .35rem; font-size: .65rem; color: var(--tw-colors-muted, #8a93a3); }
+  .json-tree details[open] > summary::before { content: '▼'; }
+  .value-bar { height: .5rem; border-radius: 999px; background: #1f2330; overflow: hidden; }
+  .value-bar > div { height: 100%; border-radius: 999px; }
+  .sparkline { width: 100%; height: 48px; }
 </style>
 </head>
-<body>
-<header>
-  <h1>fritte <span>· FRITZ!Box Dashboard · generiert {{.Generated}} · auto-refresh 5s</span></h1>
+<body class="bg-bg text-gray-100 min-h-screen font-sans">
+<header class="border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 bg-bg/90 backdrop-blur z-10">
+  <div class="flex items-center gap-3">
+    <i data-lucide="router" class="w-6 h-6 text-accent"></i>
+    <div>
+      <h1 class="text-lg font-semibold tracking-tight">fritte</h1>
+      <p class="text-xs text-muted">FRITZ!Box Dashboard · generiert {{.Generated}}</p>
+    </div>
+  </div>
+  <div id="statusBadge" class="text-xs font-semibold px-3 py-1 rounded-full bg-green-500/10 text-ok border border-ok/30 hidden">Live</div>
 </header>
+
 {{if .Halted}}
-<div class="halt">
+<div class="mx-6 mt-4 p-4 rounded-lg bg-err/10 border border-err text-err">
   <strong>Scraper gestoppt – Login-Fehler.</strong><br>
   {{.HaltReason}}<br>
-  <small>Keine weiteren Requests. Prozessneustart nötig.</small>
+  <small class="text-muted">Keine weiteren Requests. Prozessneustart nötig.</small>
 </div>
 {{end}}
-<main>
-{{range .Cards}}
-  <section class="card {{if .OK}}ok{{else}}err{{end}}">
-    <header>
-      <h2>{{.Name}}</h2>
-      {{if .OK}}<span class="badge">OK</span>{{else}}<span class="badge">FEHLER</span>{{end}}
-    </header>
-    <div class="meta">update: {{.Time}}</div>
-    <div class="body">
-      {{if .OK}}<pre>{{.JSON}}</pre>{{else}}<pre class="errtxt">{{.Error}}</pre>{{end}}
-    </div>
-  </section>
-{{end}}
+
+<main id="grid" class="p-6 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+  <div class="col-span-full text-center text-muted py-20">Lade Snapshots …</div>
 </main>
+
+<script>
+const known = {
+  box: renderBox,
+  cpu: renderCPU,
+  dect: renderDect,
+  eth_ports: renderEthPorts,
+  inetstat: renderInetstat,
+  wlan_light: renderWlan,
+  landevice: renderLandevices,
+};
+
+async function load() {
+  try {
+    const res = await fetch('/api/snapshot');
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    render(data);
+    document.getElementById('statusBadge').classList.remove('hidden');
+  } catch (e) {
+    document.getElementById('grid').innerHTML = `<div class="col-span-full text-center text-err py-20">Fehler beim Laden: ${esc(e.message)}</div>`;
+    document.getElementById('statusBadge').classList.add('hidden');
+  }
+}
+
+function render(snaps) {
+  const grid = document.getElementById('grid');
+  const names = Object.keys(snaps).sort();
+  if (names.length === 0) {
+    grid.innerHTML = '<div class="col-span-full text-center text-muted py-20">Keine Snapshots vorhanden.</div>';
+    return;
+  }
+  grid.innerHTML = names.map(name => card(name, snaps[name])).join('');
+  lucide.createIcons();
+}
+
+function card(name, snap) {
+  const ok = snap.ok;
+  const border = ok ? 'border-ok/30' : 'border-err/30';
+  const stripe = ok ? 'bg-ok' : 'bg-err';
+  const badge = ok ? 'bg-ok/10 text-ok' : 'bg-err/10 text-err';
+  const time = snap.time || '–';
+  const content = ok
+    ? (known[name] ? known[name](snap.data) : renderGeneric(name, snap.data))
+    : `<pre class="text-err text-xs whitespace-pre-wrap break-words bg-black/20 rounded p-3">${esc(snap.error || 'unbekannter Fehler')}</pre>`;
+  return `
+    <section class="bg-card border ${border} rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+      <div class="h-1 ${stripe}"></div>
+      <div class="p-4 border-b border-border flex items-center justify-between">
+        <h2 class="text-sm font-semibold uppercase tracking-wide">${esc(name)}</h2>
+        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}">${ok ? 'OK' : 'FEHLER'}</span>
+      </div>
+      <div class="p-4 text-xs text-muted mb-1">update: ${esc(time)}</div>
+      <div class="px-4 pb-4">${content}</div>
+    </section>`;
+}
+
+function renderGeneric(name, data) {
+  if (data == null) return '<p class="text-muted text-xs">Keine Daten</p>';
+  // AVM liefert viele Antworten unter einem "result"-Objekt; dieses entpacken.
+  const source = (typeof data === 'object' && !Array.isArray(data) && data.result && typeof data.result === 'object')
+    ? data.result
+    : data;
+  const keys = Object.keys(source);
+  return `
+    <div class="space-y-3">
+      ${keys.slice(0, 12).map(k => metricRow(k, source[k])).join('')}
+      ${keys.length > 12 ? `<p class="text-muted text-[10px] mt-2">… und ${keys.length - 12} weitere Felder</p>` : ''}
+      <details class="json-tree mt-3">
+        <summary class="text-accent text-xs hover:underline">JSON anzeigen</summary>
+        <pre class="mt-2 text-[10px] leading-relaxed whitespace-pre-wrap break-words bg-black/30 rounded p-3 text-muted">${esc(JSON.stringify(source, null, 2))}</pre>
+      </details>
+    </div>`;
+}
+
+function metricRow(key, val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string' && /^Stat/.test(key) && /,/.test(val)) {
+    return renderSparkline(key, val);
+  }
+  if (typeof val === 'object') {
+    return `<div class="flex justify-between text-xs"><span class="text-muted">${esc(key)}</span><span class="font-mono text-[10px] text-gray-300">${esc(JSON.stringify(val).slice(0, 40))}</span></div>`;
+  }
+  if (typeof val === 'number' && key.toLowerCase().includes('load') || /usage|util|percent|cpu|ram|mem/.test(key.toLowerCase())) {
+    const pct = Math.max(0, Math.min(100, val));
+    const color = pct > 80 ? 'bg-err' : pct > 50 ? 'bg-yellow-500' : 'bg-ok';
+    return `<div>
+      <div class="flex justify-between text-xs mb-1"><span class="text-muted">${esc(key)}</span><span class="font-mono">${val}%</span></div>
+      <div class="value-bar"><div class="${color}" style="width:${pct}%"></div></div>
+    </div>`;
+  }
+  return `<div class="flex justify-between text-xs"><span class="text-muted">${esc(key)}</span><span class="font-mono text-gray-200">${esc(String(val))}</span></div>`;
+}
+
+function renderSparkline(key, csv) {
+  const nums = csv.split(',').map(Number).filter(n => !isNaN(n));
+  if (nums.length < 2) return metricRow(key, csv);
+  const min = Math.min(...nums), max = Math.max(...nums);
+  const range = max - min || 1;
+  const width = 300, height = 48, pad = 3;
+  const usableH = height - pad * 2;
+  const step = width / (nums.length - 1);
+  const points = nums.map((n, i) => {
+    const x = i * step;
+    const y = pad + usableH - ((n - min) / range) * usableH;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const last = nums[nums.length - 1];
+  const unit = key.includes('Temperature') ? '°C' : key.includes('RAM') ? ' MB' : key.includes('CPU') ? '%' : '';
+  return `<div>
+    <div class="flex justify-between text-xs mb-1">
+      <span class="text-muted">${esc(key)}</span>
+      <span class="font-mono">${last}${unit} · ${nums.length} Werte · min ${min} / max ${max}</span>
+    </div>
+    <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <polyline fill="none" stroke="#58a6ff" stroke-width="2" points="${points}"></polyline>
+    </svg>
+  </div>`;
+}
+
+function renderBox(data) {
+  const result = data.result || data;
+  const product = result.Name || result.name || result.ProductName || 'FRITZ!Box';
+  const fw = result.FirmwareVersion || result.fwversion || result.Version || '–';
+  const uptime = result.Uptime || result.uptime;
+  const localtime = result.localtime;
+  return `
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <i data-lucide="server" class="w-5 h-5 text-accent"></i>
+        <div>
+          <div class="font-medium">${esc(product)}</div>
+          <div class="text-[10px] text-muted">Firmware ${esc(fw)}${localtime ? ' · ' + esc(localtime) : ''}</div>
+        </div>
+      </div>
+      ${uptime ? metricRow('Uptime', fmtUptime(uptime)) : ''}
+      ${renderGeneric('box', data)}
+    </div>`;
+}
+
+function renderCPU(data) {
+  const result = data.result || data;
+  const stats = Object.keys(result).filter(k => /^Stat/.test(k)).sort();
+  return `
+    <div class="space-y-3">
+      ${stats.map(k => metricRow(k, result[k])).join('')}
+      ${renderGeneric('cpu', data)}
+    </div>`;
+}
+
+function renderDect(data) {
+  const result = data.result || data;
+  const devices = Array.isArray(result.Handset) ? result.Handset : [];
+  if (!devices.length) return renderGeneric('dect', data);
+  return `
+    <div class="space-y-2">
+      <div class="text-xs text-muted mb-1">${result.HandsetCount || devices.length} DECT-Geräte${result.ReSubscriptionState != null ? ' · ReSub ' + result.ReSubscriptionState : ''}</div>
+      ${devices.slice(0, 6).map(d => {
+        const online = String(d.status || d.Status || '').toLowerCase() === 'connected' || d.connected === '1' || d.connected === true;
+        return `<div class="flex items-center justify-between text-xs bg-black/20 rounded p-2">
+          <span>${esc(d.name || d.Name || d.id || 'Handset')}</span>
+          <span class="${online ? 'text-ok' : 'text-err'}">${online ? 'online' : 'offline'}</span>
+        </div>`;
+      }).join('')}
+      ${devices.length > 6 ? `<div class="text-[10px] text-muted">… ${devices.length - 6} weitere</div>` : ''}
+      ${renderGeneric('dect', data)}
+    </div>`;
+}
+
+function renderEthPorts(data) {
+  const result = data.result || data;
+  const ports = Array.isArray(result.eth) ? result.eth : [];
+  if (!ports.length) return renderGeneric('eth_ports', data);
+  return `
+    <div class="grid grid-cols-1 gap-2">
+      ${ports.slice(0, 8).map(p => {
+        const linked = String(p.linked || p.Link || '').toLowerCase() === '1' || String(p.status || '').toLowerCase() === 'up';
+        const speed = p.speed || p.Speed || p.speed_str || '–';
+        return `<div class="flex items-center justify-between text-xs p-2 rounded ${linked ? 'bg-ok/10 text-ok' : 'bg-err/10 text-err'}">
+          <span>${esc(p.name || p.Name || p.port || p.mac || 'Port')}</span>
+          <span>${linked ? esc(speed) : 'down'}</span>
+        </div>`;
+      }).join('')}
+      ${renderGeneric('eth_ports', data)}
+    </div>`;
+}
+
+function renderInetstat(data) {
+  const result = data.result || data;
+  return `
+    <div class="space-y-3">
+      ${renderTrafficStats(result)}
+      ${renderGeneric('inetstat', data)}
+    </div>`;
+}
+
+function renderTrafficStats(obj) {
+  const buckets = ['Today', 'Yesterday', 'ThisWeek', 'LastWeek', 'ThisMonth', 'LastMonth', 'Total'];
+  const rows = [];
+  for (const key of buckets) {
+    const v = obj[key];
+    if (!v || typeof v !== 'object') continue;
+    const rx = v.rx ? fmtBytes(v.rx) : null;
+    const tx = v.tx ? fmtBytes(v.tx) : null;
+    if (!rx && !tx) continue;
+    rows.push(`<div class="flex items-center justify-between text-xs bg-black/20 rounded p-2">
+      <span class="text-muted">${key}</span>
+      <span class="font-mono">↓ ${rx || '–'} · ↑ ${tx || '–'}</span>
+    </div>`);
+  }
+  return rows.length ? rows.join('') : '';
+}
+
+function renderWlan(data) {
+  const result = data.result || data;
+  const enabled = result.wlan_enable === '1' || result.Enabled === '1' || result.enabled === '1' || result.state === 'up';
+  const ssid = result.SSID || result.ssid || result.wlan_ssid || '–';
+  const band = result.Band || result.band || result.sta_frequency || '–';
+  const channel = result.Channel || result.channel;
+  return `
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <i data-lucide="wifi" class="w-5 h-5 ${enabled ? 'text-ok' : 'text-err'}"></i>
+        <div>
+          <div class="font-medium">${esc(ssid)}</div>
+          <div class="text-[10px] text-muted">${esc(band)}${channel != null ? ' · Kanal ' + channel : ''}</div>
+        </div>
+      </div>
+      ${renderGeneric('wlan_light', data)}
+    </div>`;
+}
+
+function renderLandevices(data) {
+  const result = data.result || data;
+  const devices = Array.isArray(result.landevice) ? result.landevice : [];
+  if (!devices.length) return renderGeneric('landevice', data);
+  return `
+    <div class="space-y-2">
+      <div class="text-xs text-muted mb-1">${devices.length} LAN-Geräte</div>
+      ${devices.slice(0, 8).map(d => {
+        const online = String(d.active || d.Online || '').toLowerCase() === '1' || d.connected === '1' || d.status === 'connected';
+        const name = d.name || d.Name || d.hostname || d.mac || 'Gerät';
+        const ip = d.ip || d.ipv4 || d.Ip || '';
+        return `<div class="flex items-center justify-between text-xs bg-black/20 rounded p-2">
+          <div class="min-w-0">
+            <div class="truncate">${esc(name)}</div>
+            ${ip ? `<div class="text-[10px] text-muted">${esc(ip)}</div>` : ''}
+          </div>
+          <span class="${online ? 'text-ok' : 'text-muted'}">${online ? 'online' : 'offline'}</span>
+        </div>`;
+      }).join('')}
+      ${devices.length > 8 ? `<div class="text-[10px] text-muted">… ${devices.length - 8} weitere</div>` : ''}
+      ${renderGeneric('landevice', data)}
+    </div>`;
+}
+
+function renderLoad(label, val) {
+  if (val == null) return '';
+  const v = Number(val);
+  if (isNaN(v)) return metricRow(label, val);
+  const pct = Math.max(0, Math.min(100, v));
+  const color = pct > 80 ? 'bg-err' : pct > 50 ? 'bg-yellow-500' : 'bg-ok';
+  return `<div>
+    <div class="flex justify-between text-xs mb-1"><span class="text-muted">${esc(label)}</span><span class="font-mono">${v}%</span></div>
+    <div class="value-bar"><div class="${color}" style="width:${pct}%"></div></div>
+  </div>`;
+}
+
+function fmtUptime(seconds) {
+  const s = Number(seconds);
+  if (isNaN(s)) return seconds;
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${d}d ${h}h ${m}m`;
+}
+
+function fmtBytes(v) {
+  const n = Number(v);
+  if (isNaN(n)) return v;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0, val = n;
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+  return val.toFixed(2) + ' ' + units[i];
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+load();
+</script>
 </body>
 </html>

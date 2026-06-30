@@ -21,7 +21,7 @@ services:
     container_name: fritte
     restart: unless-stopped
     ports:
-      - "8080"
+      - 5544:8080
     environment:
       FRITZ_HOST: "https://fritz.box"
       FRITZ_USERNAME: "${FRITZ_USERNAME:-}"

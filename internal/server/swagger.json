@@ -18,7 +18,7 @@
     "/": {
       "get": {
         "summary": "HTML-Dashboard",
-        "description": "Liefert die HTML-Oberfläche mit allen aktuellen Snapshots.",
+        "description": "Liefert die HTML-Oberfläche. Die Snapshots werden clientseitig per /api/snapshot geladen und je nach Modul passend dargestellt.",
         "operationId": "getDashboard",
         "responses": {
           "200": {

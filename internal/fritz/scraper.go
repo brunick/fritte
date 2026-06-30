@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fritte/internal/eventlog"
+	"fritte/internal/store"
 )
 
 // Endpoint verknuepft einen Anzeigenamen mit dem API-Pfad.
@@ -41,9 +42,17 @@ type Scraper struct {
 	haltedAt   time.Time
 
 	// Optional: Eventlog-Verarbeitung (Postgres + Syslog).
-	store      *eventlog.Store
-	syslog     *eventlog.Sender
-	boxHost    string
+	store   *eventlog.Store
+	syslog  *eventlog.Sender
+	boxHost string
+
+	// Optional: Persistierung aller Modul-Snapshots pro Modul in Postgres.
+	snapstore *store.Store
+}
+
+// WithStore konfiguriert den Snapshot-Speicher fuer Modul-History.
+func (s *Scraper) WithStore(st *store.Store) {
+	s.snapstore = st
 }
 
 func NewScraper(client *Client, endpoints []Endpoint, interval time.Duration) *Scraper {
@@ -101,7 +110,7 @@ func DefaultEndpoints() []Endpoint {
 func (s *Scraper) Run(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
-	s.scrapeAll()
+	s.scrapeAll(ctx)
 	for {
 		if halted, _ := s.Halted(); halted {
 			return
@@ -110,12 +119,12 @@ func (s *Scraper) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.scrapeAll()
+			s.scrapeAll(ctx)
 		}
 	}
 }
 
-func (s *Scraper) scrapeAll() {
+func (s *Scraper) scrapeAll(ctx context.Context) {
 	// Gemeinsamer Login VOR den parallelen Endpoint-Requests, damit bei
 	// falschen Zugangsdaten nicht 10 Logins parallel gegen die Blocktime
 	// laufen. Schlägt der Login fehl, wird sofort gestoppt.
@@ -131,13 +140,13 @@ func (s *Scraper) scrapeAll() {
 		wg.Add(1)
 		go func(ep Endpoint) {
 			defer wg.Done()
-			s.scrapeOne(ep)
+			s.scrapeOne(ctx, ep)
 		}(ep)
 	}
 	wg.Wait()
 }
 
-func (s *Scraper) scrapeOne(ep Endpoint) {
+func (s *Scraper) scrapeOne(ctx context.Context, ep Endpoint) {
 	data, err := s.client.Get(ep.Path)
 	snap := Snapshot{Time: time.Now()}
 	if err != nil {
@@ -151,6 +160,7 @@ func (s *Scraper) scrapeOne(ep Endpoint) {
 		s.mu.Lock()
 		s.snapshots[ep.Name] = snap
 		s.mu.Unlock()
+		go s.persistSnapshot(ctx, ep.Name, snap)
 		return
 	}
 
@@ -163,31 +173,51 @@ func (s *Scraper) scrapeOne(ep Endpoint) {
 	if isMultiPath(ep.Path) {
 		modules, ok := splitMultiResponse(data)
 		if !ok {
-			s.snapshots[ep.Name] = Snapshot{
+			errSnap := Snapshot{
 				Time:  time.Now(),
 				Ok:    false,
 				Error: "multi-antwort konnte nicht in module zerlegt werden",
 				Data:  data,
 			}
+			s.snapshots[ep.Name] = errSnap
+			go s.persistSnapshot(ctx, ep.Name, errSnap)
 			return
 		}
 		now := time.Now()
 		for _, mod := range modules {
-			s.snapshots[mod.Name] = Snapshot{Time: now, Ok: true, Data: mod.Data}
+			modSnap := Snapshot{Time: now, Ok: true, Data: mod.Data}
+			s.snapshots[mod.Name] = modSnap
+			go s.persistSnapshot(ctx, mod.Name, modSnap)
 		}
 		return
 	}
 
-	s.snapshots[ep.Name] = Snapshot{Time: time.Now(), Ok: true, Data: data}
+	snap = Snapshot{Time: time.Now(), Ok: true, Data: data}
+	s.snapshots[ep.Name] = snap
+	go s.persistSnapshot(ctx, ep.Name, snap)
 
 	// Eventlog wird gesondert verarbeitet: in Postgres gespeichert und an
 	// Syslog weitergeleitet, statt als Prometheus-Metrik ausgegeben zu werden.
 	if ep.Name == "dino_eventlog" {
-		go s.processEventlog(data)
+		go s.processEventlog(ctx, data)
 	}
 }
 
-func (s *Scraper) processEventlog(data []byte) {
+// persistSnapshot schreibt den Snapshot asynchron in den Snapshot-Store.
+// Fehler werden nur geloggt, damit die DB bei Problemen den Scraper nicht
+// blockiert.
+func (s *Scraper) persistSnapshot(ctx context.Context, module string, snap Snapshot) {
+	if s.snapstore == nil {
+		return
+	}
+	storeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := s.snapstore.Save(storeCtx, module, snap.Ok, snap.Data); err != nil {
+		log.Printf("snapshot store %s: %v", module, err)
+	}
+}
+
+func (s *Scraper) processEventlog(ctx context.Context, data []byte) {
 	entries, err := eventlog.ParseEntries(data)
 	if err != nil {
 		log.Printf("eventlog parse: %v", err)
@@ -197,18 +227,18 @@ func (s *Scraper) processEventlog(data []byte) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	eventCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	if s.store != nil {
-		if err := s.store.SaveEntries(ctx, entries); err != nil {
+		if err := s.store.SaveEntries(eventCtx, entries); err != nil {
 			log.Printf("eventlog store: %v", err)
 			return
 		}
 	}
 
 	if s.store != nil && s.syslog != nil {
-		unsent, err := s.store.UnsentEntries(ctx)
+		unsent, err := s.store.UnsentEntries(eventCtx)
 		if err != nil {
 			log.Printf("eventlog unsent: %v", err)
 			return
@@ -221,7 +251,7 @@ func (s *Scraper) processEventlog(data []byte) {
 		s.mu.RUnlock()
 		meta := eventlog.ExtractMeta(boxSnap.Data, s.boxHost)
 		sent := s.syslog.Dispatch(unsent, s.boxHost, meta)
-		if err := s.store.MarkSent(ctx, sent); err != nil {
+		if err := s.store.MarkSent(eventCtx, sent); err != nil {
 			log.Printf("eventlog mark sent: %v", err)
 		}
 	}

@@ -13,6 +13,7 @@ import (
 	"fritte/internal/eventlog"
 	"fritte/internal/fritz"
 	"fritte/internal/server"
+	"fritte/internal/store"
 )
 
 func main() {
@@ -26,6 +27,7 @@ func main() {
 
 	var eventlogStore *eventlog.Store
 	var syslogSender *eventlog.Sender
+	var snapshotStore *store.Store
 	if cfg.DatabaseURL != "" {
 		var err error
 		eventlogStore, err = eventlog.NewStore(cfg.DatabaseURL)
@@ -33,9 +35,18 @@ func main() {
 			log.Fatalf("eventlog store: %v", err)
 		}
 		defer eventlogStore.Close()
+
+		snapshotStore, err = store.NewStore(cfg.DatabaseURL)
+		if err != nil {
+			log.Fatalf("snapshot store: %v", err)
+		}
+		defer snapshotStore.Close()
+		scraper.WithStore(snapshotStore)
+
 		syslogSender = eventlog.NewSender(cfg.SyslogHost, cfg.SyslogPort, cfg.SyslogProtocol)
 		scraper.WithEventlog(eventlogStore, syslogSender)
 		log.Printf("eventlog: postgres=%s syslog=%s:%s/%s", cfg.DatabaseURL, cfg.SyslogHost, cfg.SyslogPort, cfg.SyslogProtocol)
+		log.Printf("snapshot store: postgres=%s", cfg.DatabaseURL)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
